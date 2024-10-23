@@ -1,6 +1,7 @@
 const MenuItem = require('../models/MenuItem');
 const bucket = require('../config/firebaseConfig'); // Import the Firebase bucket
 
+
 // Get all menu items
 exports.getMenuItems = async (req, res) => {
   try {
@@ -15,72 +16,69 @@ exports.getMenuItems = async (req, res) => {
   }
 };
 
-// Add a new menu item with image upload to Firebase
+// Remove the multer import
+// const multer = require('multer');
+
 exports.addMenuItem = async (req, res) => {
-  const { name, price, available } = req.body;
+  const { name, price, available, imageUrl } = req.body;
 
   try {
-    // Check if file is present
-    if (!req.file) {
-      return res.status(400).json({ msg: 'No image file uploaded' });
+    // Validate if image URL is provided
+    if (!imageUrl) {
+      return res.status(400).json({ msg: 'Image URL is required' });
     }
 
-    // Get the image file from Multer's memory storage
-    const file = req.file;
-    const blob = bucket.file(`menu_images/${Date.now()}_${file.originalname}`);
-
-    const blobStream = blob.createWriteStream({
-      metadata: {
-        contentType: file.mimetype
-      }
+    // Create new menu item with the provided image URL
+    const newItem = new MenuItem({
+      name,
+      price,
+      available,
+      imageUrl
     });
 
-    blobStream.on('error', (err) => {
-      console.error(err);
-      res.status(500).json({ msg: 'Error uploading image' });
-    });
+    await newItem.save();
 
-    blobStream.on('finish', async () => {
-      // Generate a signed URL with a limited expiration time
-      const [url, token] = await blob.getSignedUrl({
-        action: 'read',
-        expires: '03-09-2035' // Set your desired expiration date
-      });
-
-      // Create new menu item with the public URL of the image
-      const newItem = new MenuItem({
-        name,
-        price,
-        available,
-        imageUrl: url, // Store the signed URL in MongoDB
-        imageToken: token // Store the token in MongoDB
-      });
-
-      await newItem.save();
-
-      res.status(201).json(newItem);
-    });
-
-    blobStream.end(file.buffer); // Send the file's buffer to Firebase
+    res.status(201).json(newItem);
   } catch (err) {
     console.error(err.message);
     res.status(500).json({ msg: 'Error adding menu item' });
   }
 };
 
-
-
-// Update a menu item
 exports.updateMenuItem = async (req, res) => {
+  const { name, price, available, imageUrl } = req.body;
+
   try {
-    const updatedItem = await MenuItem.findByIdAndUpdate(req.params.id, req.body, { new: true });
-    if (!updatedItem) {
+    // Find the existing menu item
+    const existingItem = await MenuItem.findById(req.params.id);
+    if (!existingItem) {
       return res.status(404).json({ msg: 'Menu item not found' });
     }
-    res.json(updatedItem);
+
+    // Prepare the update data
+    const updateData = {
+      name: name || existingItem.name,
+      price: price || existingItem.price,
+      available: available === undefined ? existingItem.available : (available === 'true' || available === true),
+      imageUrl: imageUrl || existingItem.imageUrl
+    };
+
+    // Update the menu item with new image URL and data
+    const updatedItem = await MenuItem.findByIdAndUpdate(
+      req.params.id,
+      updateData,
+      { new: true }
+    );
+
+    res.json({
+      success: true,
+      data: updatedItem,
+      message: 'Menu item updated successfully'
+    });
+
   } catch (err) {
-    console.error(err.message);
-    res.status(500).json({ msg: 'Error updating menu item' });
+    console.error('General error in updateMenuItem:', err);
+    res.status(500).json({ msg: 'Server error while updating menu item' });
   }
 };
 
