@@ -7,26 +7,38 @@ exports.placeOrder = async (req, res) => {
   const studentId = req.user.userId; // Assuming userId is extracted from the JWT
 
   try {
-    // Fetch all menu items in one query
-    const menuItems = await MenuItem.find({ name: { $in: items.map(item => item.name) } });
+    // Fetch all menu items by their unique IDs from the request payload
+    const menuItems = await MenuItem.find({ _id: { $in: items.map(item => item.menuItemId) } });
 
+    // Verify if all requested items were found in the menu
     if (menuItems.length !== items.length) {
       return res.status(400).json({ msg: 'Some menu items were not found' });
     }
 
-    // Calculate total price
+    // Calculate total price and prepare order items with all details
     let totalPrice = 0;
     const orderItems = items.map(item => {
-      const menuItem = menuItems.find(menu => menu.name === item.name);
-      totalPrice += menuItem.price * item.quantity;
-      return { name: item.name, quantity: item.quantity };
+      const menuItem = menuItems.find(menuItem => menuItem._id.toString() === item.menuItemId);
+      const itemTotalPrice = menuItem.price * item.quantity;
+      totalPrice += itemTotalPrice;
+
+      return {
+        menuItemId: menuItem._id,
+        name: menuItem.name,
+        price: menuItem.price,
+        imageUrl: menuItem.imageUrl, // Include all relevant details
+        quantity: item.quantity,
+        itemTotalPrice,
+      };
     });
 
-    // Create the new order
+    // Create and save the new order with detailed items
     const newOrder = new Order({
       studentId,
-      items: orderItems,
-      totalPrice
+      items: orderItems, // Include the detailed order items
+      totalPrice,
+      status: 'pending',
+      orderTime: new Date(),
     });
 
     await newOrder.save();
@@ -36,6 +48,8 @@ exports.placeOrder = async (req, res) => {
     res.status(500).send('Server error');
   }
 };
+
+
 
 // View all orders (for the canteen)
 exports.getOrders = async (req, res) => {
