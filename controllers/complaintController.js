@@ -4,7 +4,18 @@ const Complaint = require('../models/Complaints');
 // Fetch all complaints (canteen/admin access)
 exports.getComplaints = async (req, res) => {
   try {
-    const complaints = await Complaints.find().populate('userId', 'name'); // Populates user name for reference
+    let complaints;
+
+    // Check if the user role is student
+    if (req.user.role === 'student') {
+      // Fetch complaints for the particular student
+      const userId = req.user.userId;
+      complaints = await Complaint.find({ userId });
+    } else {
+      // Fetch all complaints (default behavior)
+      complaints = await Complaints.find().populate('userId', 'name');
+    }
+
     res.json(complaints);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch complaints' });
@@ -15,15 +26,17 @@ exports.getComplaints = async (req, res) => {
 exports.postComplaint = async (req, res) => {
   try {
     const { subject, description } = req.body;
+    
     const complaint = new Complaint({
       subject,
       description,
-      userId: req.user._id, // Set the user ID from the authenticated user
+      userId: req.user.userId,
       status: 'pending',
     });
     await complaint.save();
     res.status(201).json(complaint);
   } catch (error) {
+    console.log(error);
     res.status(400).json({ error: 'Failed to create complaint' });
   }
 };
@@ -31,8 +44,10 @@ exports.postComplaint = async (req, res) => {
 // Update complaint status (canteen/admin access)
 exports.updateComplaintStatus = async (req, res) => {
   try {
+    console.log(req.body);
     const { id } = req.params;
     const { status } = req.body;
+    
     const allowedStatuses = ['pending', 'resolved'];
 
     if (!allowedStatuses.includes(status)) {
